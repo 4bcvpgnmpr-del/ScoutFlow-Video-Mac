@@ -12,6 +12,7 @@ protocol.registerSchemesAsPrivileged([
 let ffmpegPath = require('ffmpeg-static');
 if (ffmpegPath) ffmpegPath = ffmpegPath.replace('app.asar' + path.sep, 'app.asar.unpacked' + path.sep);
 
+const REMOTE = process.env.SCOUT_URL || 'https://4bcvpgnmpr-del.github.io/Editor-de-video/index.html';
 const jobs = new Map(); // id -> {dir, proc}
 let seq = 0, blocker = null;
 const safe = (n) => path.basename(String(n));
@@ -124,9 +125,26 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  protocol.handle('scout', (req) => {
+  protocol.handle('scout', async (req) => {
     const u = new URL(req.url);
     const rel = decodeURIComponent(u.pathname).replace(/^\/+/, '') || 'index.html';
+    if (rel === 'index.html') {
+      // Siempre intenta bajar la última versión publicada; si no hay internet usa la última copia guardada o la incluida en la app
+      const cache = path.join(app.getPath('userData'), 'index-web.html');
+      const hdr = { 'content-type': 'text/html; charset=utf-8' };
+      try {
+        const ctl = new AbortController();
+        const to = setTimeout(() => ctl.abort(), 5000);
+        const r = await fetch(REMOTE + (REMOTE.includes('?') ? '&' : '?') + 't=' + Date.now(), { cache: 'no-store', signal: ctl.signal });
+        clearTimeout(to);
+        const txt = await r.text();
+        if (r.ok && txt.length > 100000 && /<html/i.test(txt)) {
+          try { fs.writeFileSync(cache, txt); } catch (_) {}
+          return new Response(txt, { headers: hdr });
+        }
+      } catch (_) {}
+      try { if (fs.existsSync(cache)) return new Response(fs.readFileSync(cache, 'utf8'), { headers: hdr }); } catch (_) {}
+    }
     const file = path.join(__dirname, 'app', path.normalize(rel).replace(/^(\.\.[\/\\])+/, ''));
     return net.fetch(pathToFileURL(file).toString());
   });
