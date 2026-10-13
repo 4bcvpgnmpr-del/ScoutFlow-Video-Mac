@@ -1,0 +1,18 @@
+{
+  "name": "scoutflow-video",
+  "productName": "ScoutFlow Video",
+  "version": "1.0.0",
+  "description": "Editor de vídeo de scouting para baloncesto",
+  "main": "main.js",
+  "author": "ScoutFlow",
+  "scripts": { "start": "electron .", "dist": "electron-builder --mac --publish never" },
+  "dependencies": { "ffmpeg-static": "^5.2.0" },
+  "devDependencies": { "electron": "^33.2.0", "electron-builder": "^25.1.8" },
+  "build": {
+    "appId": "app.scoutflow.video",
+    "productName": "ScoutFlow Video",
+    "files": ["main.js", "preload.js", "app/**/*", "package.json"],
+    "asarUnpack": ["node_modules/ffmpeg-static/**"],
+    "mac": { "category": "public.app-category.sports", "target": ["dmg"], "identity": "-", "hardenedRuntime": false, "gatekeeperAssess": false }
+  }
+}
