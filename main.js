@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, net, shell, powerSaveBlocker } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, shell, powerSaveBlocker, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -35,6 +35,20 @@ ipcMain.handle('ff:awake', (_e, on) => {
   if (on && blocker === null) blocker = powerSaveBlocker.start('prevent-display-sleep');
   if (!on && blocker !== null) { powerSaveBlocker.stop(blocker); blocker = null; }
 });
+ipcMain.handle('save:choose', async () => {
+  const r = await dialog.showOpenDialog({ title: 'Carpeta donde guardar los vídeos', properties: ['openDirectory', 'createDirectory'] });
+  return r.canceled || !r.filePaths[0] ? '' : r.filePaths[0];
+});
+ipcMain.handle('ff:move', (_e, id, name, dir, dest) => {
+  const src = path.join(jobs.get(id).dir, safe(name));
+  const base = safe(dest).replace(/\.mp4$/i, '');
+  let out = path.join(dir, base + '.mp4'), k = 2;
+  while (fs.existsSync(out)) out = path.join(dir, base + ' (' + (k++) + ').mp4');
+  fs.copyFileSync(src, out);
+  try { fs.unlinkSync(src); } catch (_) {}
+  return out;
+});
+ipcMain.handle('save:show', (_e, p) => { shell.showItemInFolder(p); });
 ipcMain.handle('ff:exec', (e, id, args) => new Promise((resolve) => {
   const j = jobs.get(id);
   const proc = spawn(ffmpegPath, ['-hide_banner', '-nostdin', '-loglevel', 'error', '-progress', 'pipe:1', '-nostats', ...args], { cwd: j.dir });

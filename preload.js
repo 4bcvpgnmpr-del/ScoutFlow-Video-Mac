@@ -13,5 +13,8 @@ contextBridge.exposeInMainWorld('scoutDesktop', {
   exec: (job, args) => ipcRenderer.invoke('ff:exec', job, args),
   kill: (job) => ipcRenderer.invoke('ff:kill', job),
   onProgress: (cb) => { progCb = cb; },
+  chooseDir: () => ipcRenderer.invoke('save:choose'),
+  move: (job, name, dir, dest) => ipcRenderer.invoke('ff:move', job, name, dir, dest),
+  show: (p) => ipcRenderer.invoke('save:show', p),
   keepAwake: (on) => ipcRenderer.invoke('ff:awake', !!on)
 });
