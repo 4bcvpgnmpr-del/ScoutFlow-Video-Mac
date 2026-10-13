@@ -1,5 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
-let progCb = null;
+let progCb = null, menuCb = null;
+ipcRenderer.on('menu', (_e, a) => { if (menuCb) menuCb(a); });
 ipcRenderer.on('ff:progress', (_e, sec) => { if (progCb) progCb(sec); });
 contextBridge.exposeInMainWorld('scoutDesktop', {
   platform: process.platform,
@@ -16,5 +17,6 @@ contextBridge.exposeInMainWorld('scoutDesktop', {
   chooseDir: () => ipcRenderer.invoke('save:choose'),
   move: (job, name, dir, dest) => ipcRenderer.invoke('ff:move', job, name, dir, dest),
   show: (p) => ipcRenderer.invoke('save:show', p),
+  onMenu: (cb) => { menuCb = cb; },
   keepAwake: (on) => ipcRenderer.invoke('ff:awake', !!on)
 });

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, protocol, net, shell, powerSaveBlocker, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, shell, powerSaveBlocker, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -68,11 +68,54 @@ ipcMain.handle('ff:exec', (e, id, args) => new Promise((resolve) => {
   proc.on('close', (code) => { j.proc = null; if (code) console.error('ffmpeg error', code, err); resolve(code === null ? 1 : code); });
 }));
 
+let mainWin = null;
+function send(action) { if (mainWin && !mainWin.isDestroyed()) { mainWin.show(); mainWin.focus(); mainWin.webContents.send('menu', action); } }
+function buildMenu() {
+  const isMac = process.platform === 'darwin';
+  const it = (id, label, accelerator, extra) => Object.assign({ id, label, accelerator, click: () => send(id) }, extra || {});
+  const tpl = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    { label: 'Archivo', submenu: [
+      it('open', 'Abrir vídeo…', 'CmdOrCtrl+O'),
+      it('saveProject', 'Guardar proyecto', 'CmdOrCtrl+S'),
+      it('loadProject', 'Cargar proyecto…', 'CmdOrCtrl+Shift+O'),
+      { type: 'separator' },
+      it('production', 'Mesa de producción y exportar vídeo', 'CmdOrCtrl+Shift+P'),
+      it('csv', 'Exportar CSV'),
+      { type: 'separator' },
+      it('backupExport', 'Exportar copia de seguridad…'),
+      it('backupImport', 'Importar copia de seguridad…'),
+      { type: 'separator' },
+      it('settings', 'Ajustes…', 'CmdOrCtrl+,'),
+      { type: 'separator' },
+      { role: 'close', label: 'Cerrar ventana' }
+    ] },
+    { label: 'Edición', submenu: [
+      it('undo', 'Deshacer', 'CmdOrCtrl+Z', { registerAccelerator: false }),
+      it('redo', 'Rehacer', 'CmdOrCtrl+Shift+Z', { registerAccelerator: false }),
+      { type: 'separator' },
+      { role: 'cut', label: 'Cortar' }, { role: 'copy', label: 'Copiar' }, { role: 'paste', label: 'Pegar' }, { role: 'selectAll', label: 'Seleccionar todo' }
+    ] },
+    { label: 'Ver', submenu: [
+      it('buttons', 'Mostrar u ocultar la botonera'),
+      it('layout', 'Paneles y diseño'),
+      { type: 'separator' },
+      { role: 'resetZoom', label: 'Tamaño normal' }, { role: 'zoomIn', label: 'Ampliar' }, { role: 'zoomOut', label: 'Reducir' },
+      { type: 'separator' },
+      { role: 'togglefullscreen', label: 'Pantalla completa' }
+    ] },
+    { role: 'windowMenu', label: 'Ventana' },
+    { label: 'Ayuda', submenu: [ it('help', 'Tutorial') ] }
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(tpl));
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440, height: 900, backgroundColor: '#0e0e10', title: 'ScoutFlow Video',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false }
   });
+  mainWin = win;
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) { shell.openExternal(url); return { action: 'deny' }; }
     return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } } };
@@ -87,6 +130,7 @@ app.whenReady().then(() => {
     const file = path.join(__dirname, 'app', path.normalize(rel).replace(/^(\.\.[\/\\])+/, ''));
     return net.fetch(pathToFileURL(file).toString());
   });
+  buildMenu();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
