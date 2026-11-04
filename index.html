@@ -6908,6 +6908,7 @@ async function efPerm(){ if(!EXPF.use||!EXPF.dir) return false; if(EXPF.dir.desk
 window.__expMute=()=>lsGet('bbtag.expMute')==='1';
 function efRowHtml(){
   const mute='<div class="xc"><div class="xrow"><label style="flex:1"><input type="checkbox" id="exMute"'+(window.__expMute()?' checked':'')+'> Exportar sin sonido <span style="font-size:12px;color:#8b8c93">(si el audio sale desfasado)</span></label></div></div>';
+  if(window.scoutDesktop&&!efHas()) return mute+'<div class="xh" style="font-size:12px;color:#ffb020;padding:0 4px">Esta versión de la app no guarda sola en carpeta: instala la app nueva (ScoutFlow Video actualizada). Mientras, usa «Descargar».</div>';
   if(!efHas()) return mute+'<div class="xh" style="font-size:12px;color:#8b8c93;padding:0 4px">Este navegador no permite elegir carpeta: el archivo se guarda en Descargas.</div>';
   return mute+'<div class="xc"><div class="xrow" style="flex-wrap:wrap">'+
     '<label style="flex:1;min-width:150px"><input type="checkbox" id="efUse"'+(EXPF.use?' checked':'')+'> Guardar en una carpeta</label>'+
@@ -7322,7 +7323,8 @@ $('#fileProject').onchange=async e=>{
       const nm=String(o.videoName||key.split('|')[0]);
       try{ const ra=JSON.parse(lsGet('bbtag.recent')||'[]')||[], pr=ra.find(r=>r&&r.key===key), rest=ra.filter(r=>r&&r.key!==key); rest.unshift({key,name:nm,at:Date.now(),th:(pr&&pr.th)||'',n:o.events.length,src:pr&&pr.src}); lsSet('bbtag.recent',JSON.stringify(rest.slice(0,30))); }catch(_){}
       try{ window.__renderRec&&window.__renderRec(); }catch(_){}
-      toast('Proyecto «'+nm+'» recuperado: '+o.events.length+' cortes. Ábrelo en «Mis proyectos» y elige su vídeo.');
+      try{ window.__pjApi&&window.__pjApi.addKey(key,nm); }catch(_){}
+      toast('Proyecto «'+nm+'» recuperado: '+o.events.length+' cortes. Ábrelo en «Proyectos» y elige su vídeo.');
       return;
     }
     const idMap={};
@@ -8883,7 +8885,7 @@ function ipSegSync(){ const g=document.getElementById('ipSeg'); if(!g) return; g
   }); }
   window.__askOk=askOk;
   window.__pjNew=newProject;
-  window.__pjApi={create:(name)=>{ const a=gGet(), g={id:uid(),name:String(name).slice(0,60),keys:[]}; a.push(g); gSet(a); lsSet(AK,g.id); try{ window.__renderRec&&window.__renderRec(); }catch(e){} return g; }};
+  window.__pjApi={addKey:(key,name)=>{ const a=gGet(); let g=a.find(x=>x.id===lsGet(AK)); if(!g){ g=a.find(x=>x.keys.includes(key)); } if(!g){ g={id:uid(),name:String(name||'Proyecto').slice(0,60),keys:[]}; a.push(g); } if(!g.keys.includes(key)) g.keys.push(key); gSet(a); lsSet(AK,g.id); try{ window.__pjHome(); }catch(e){} return g; },create:(name)=>{ const a=gGet(), g={id:uid(),name:String(name).slice(0,60),keys:[]}; a.push(g); gSet(a); lsSet(AK,g.id); try{ window.__renderRec&&window.__renderRec(); }catch(e){} return g; }};
 
   /* inicio: tarjetas de proyectos */
   window.__pjHome=function(){
@@ -8891,7 +8893,7 @@ function ipSegSync(){ const g=document.getElementById('ipSeg'); if(!g) return; g
     let c=document.getElementById('hmProjs');
     if(!c){ c=document.createElement('div'); c.id='hmProjs'; const fh=home.querySelector('.hm-fh'); fh.parentNode.insertBefore(c,fh); }
     let rec=[]; try{ rec=JSON.parse(lsGet('bbtag.recent')||'[]'); }catch(e){}
-    const gs=gGet();
+    const gs=gGet(); document.body.classList.toggle('pjHas',gs.length>0);
     c.innerHTML='<div class="hm-fh" style="margin-top:6px"><h3>Proyectos</h3></div><div class="hm-r" id="hmPg" style="margin-bottom:14px">'+
       gs.map(g=>{ const r=rec.find(x=>g.keys.includes(x.key)&&x.th); const n=g.keys.reduce((a,k)=>{ const o=q(k); return a+((o&&o.events)||[]).length; },0);
         return '<div class="hm-w" style="position:relative"><span class="hm-d" data-pdel="'+esc(g.id)+'" role="button" aria-label="Borrar proyecto" title="Borrar proyecto">🗑</span><button class="hm-c" style="width:100%" data-pg="'+esc(g.id)+'"><div class="th" style="'+(r?'background-image:url('+r.th+')':'')+'">'+(r?'':'📚')+'</div><b>'+esc(g.name)+'</b><small>'+g.keys.length+' partidos · '+n+' cortes</small></button></div>'; }).join('')+
@@ -9587,7 +9589,7 @@ document.getElementById('ipLibMore').onclick=()=>document.body.classList.toggle(
    '<button class="hm-t" id="hmFile"><i style="background:#ff5a5a"></i><span>Desde Archivos<small>iCloud, Drive, En mi iPad</small></span></button>'+
    '<button class="hm-t" id="hmMarks"><i style="background:#ff9f2f"></i><span>Recuperar marcas<small>Archivo de proyecto</small></span></button>'+
    '<button class="hm-t" id="hmEdit"><i style="background:#ffc933"></i><span>Editar set de botones</span></button>'+
-   '</div><div class="hm-fh"><h3>Mis proyectos</h3><select id="hmTeamF" aria-label="Filtrar por equipo" hidden></select></div><div class="hm-r" id="hmRec"></div></div>';
+   '</div><div class="hm-fh"><h3>Partidos guardados</h3><select id="hmTeamF" aria-label="Filtrar por equipo" hidden></select></div><div class="hm-r" id="hmRec"></div></div>';
   B.appendChild(h);
   const f2=document.createElement('input'); f2.type='file'; f2.accept='.mp4,.m4v,.mov,.webm,.mkv'; f2.hidden=true; B.appendChild(f2);
   f2.onchange=e=>{ loadFile(e.target.files[0]); e.target.value=''; };
@@ -9681,7 +9683,7 @@ document.getElementById('ipLibMore').onclick=()=>document.body.classList.toggle(
    '#hmHero button{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;min-height:112px;padding:18px 20px;border-radius:16px;border:1px solid #2a2a2a;background:#161616;color:#fff;text-align:left;cursor:pointer}'+
    '#hmHero button:hover{background:#1d1d1d;border-color:#444}#hmHero button:first-child{background:linear-gradient(135deg,#ff8a1f,#d94f00);border-color:#ff8a1f}#hmHero button:first-child:hover{filter:brightness(1.06)}'+
    '#hmHero .ic{font-size:28px;line-height:1}#hmHero b{font-size:18px}#hmHero small{opacity:.7;font-size:12.5px}#hmHero button:first-child small{opacity:.9}'+
-   '#ipHome #hmProjs{order:3}#ipHome .hm-in>.hm-fh{order:4}#ipHome .hm-in>.hm-r{order:5}'+
+   'body.pjHas:not(.pjMore) #ipHome .hm-in>.hm-fh,body.pjHas:not(.pjMore) #ipHome .hm-in>.hm-r{display:none!important}#ipHome #hmProjs{order:3}#ipHome .hm-in>.hm-fh{order:4}#ipHome .hm-in>.hm-r{order:5}'+
    '#hmTeamF,#ipHome .hm-in>.hm-g,#ipHome .hm-toolsH,#ipHome #hmMore,#ipHome #hmPgNew{display:none!important}#ipHome #hmProjs.hmEmpty{display:none}'+
    'body.port #hmHero{grid-template-columns:1fr}@media(max-width:700px){#hmHero{grid-template-columns:1fr}#ipHome .hm-word{font-size:40px}}'+
    /* asistente */
