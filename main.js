@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
-const nativeAI = require('./ai.js');
+let nativeAI; try{ nativeAI = require('./ai.js'); }catch(e){ nativeAI = { init: async()=>false, detect: async()=>[] }; }
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'scout', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
