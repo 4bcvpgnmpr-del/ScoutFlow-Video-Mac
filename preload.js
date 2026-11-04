@@ -16,7 +16,11 @@ contextBridge.exposeInMainWorld('scoutDesktop', {
   onProgress: (cb) => { progCb = cb; },
   chooseDir: () => ipcRenderer.invoke('save:choose'),
   move: (job, name, dir, dest) => ipcRenderer.invoke('ff:move', job, name, dir, dest),
+  writeFile: (dir, sub, name, data) => ipcRenderer.invoke('save:write', dir, sub, name, data),
   show: (p) => ipcRenderer.invoke('save:show', p),
   onMenu: (cb) => { menuCb = cb; },
+  aiInit: () => ipcRenderer.invoke('ai:init'),
+  aiDetect: (rgba, S, thr) => ipcRenderer.invoke('ai:detect', rgba, S, thr),
+  askMedia: () => ipcRenderer.invoke('media:ask'),
   keepAwake: (on) => ipcRenderer.invoke('ff:awake', !!on)
 });

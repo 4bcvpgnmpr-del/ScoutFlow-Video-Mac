@@ -1,9 +1,10 @@
-const { app, BrowserWindow, ipcMain, protocol, net, shell, powerSaveBlocker, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, shell, powerSaveBlocker, dialog, Menu, session, systemPreferences } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
+const nativeAI = require('./ai.js');
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'scout', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
@@ -17,6 +18,8 @@ const jobs = new Map(); // id -> {dir, proc}
 let seq = 0, blocker = null;
 const safe = (n) => path.basename(String(n));
 
+ipcMain.handle('ai:init', () => nativeAI.init());
+ipcMain.handle('ai:detect', (_e, rgba, S, thr) => nativeAI.detect(rgba, S, thr));
 ipcMain.handle('ff:start', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scoutflow-'));
   const id = 'j' + (++seq);
@@ -47,6 +50,16 @@ ipcMain.handle('ff:move', (_e, id, name, dir, dest) => {
   while (fs.existsSync(out)) out = path.join(dir, base + ' (' + (k++) + ').mp4');
   fs.copyFileSync(src, out);
   try { fs.unlinkSync(src); } catch (_) {}
+  return out;
+});
+/* guarda un archivo (ya generado en la ventana) dentro de la carpeta elegida, en una subcarpeta, sin repetir nombres */
+ipcMain.handle('save:write', (_e, dir, sub, name, data) => {
+  const folder = sub ? path.join(String(dir), safe(sub)) : String(dir);
+  fs.mkdirSync(folder, { recursive: true });
+  const nm = safe(name), ext = path.extname(nm), stem = nm.slice(0, nm.length - ext.length);
+  let out = path.join(folder, stem + ext), k = 2;
+  while (fs.existsSync(out)) out = path.join(folder, stem + ' (' + (k++) + ')' + ext);
+  fs.writeFileSync(out, Buffer.from(data));
   return out;
 });
 ipcMain.handle('save:show', (_e, p) => { shell.showItemInFolder(p); });
@@ -81,6 +94,7 @@ function buildMenu() {
       it('saveProject', 'Guardar proyecto', 'CmdOrCtrl+S'),
       it('loadProject', 'Cargar proyecto…', 'CmdOrCtrl+Shift+O'),
       { type: 'separator' },
+      it('saveVideo', 'Exportar vídeo…', 'CmdOrCtrl+E'),
       it('production', 'Mesa de producción y exportar vídeo', 'CmdOrCtrl+Shift+P'),
       it('csv', 'Exportar CSV'),
       { type: 'separator' },
@@ -121,12 +135,39 @@ function createWindow() {
     if (/^https?:/.test(url)) { shell.openExternal(url); return { action: 'deny' }; }
     return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } } };
   });
+  /* la página pide confirmar al cerrar mientras se graba en vivo; sin esto Electron ignora el cierre y no deja salir */
+  win.webContents.on('will-prevent-unload', (e) => {
+    const r = dialog.showMessageBoxSync(win, { type: 'warning', buttons: ['Seguir grabando', 'Salir'], defaultId: 0, cancelId: 0,
+      title: 'Grabación en curso', message: 'Estás grabando un partido en vivo.', detail: 'Si sales ahora, lo grabado hasta aquí se podrá recuperar al abrir el programa.' });
+    if (r === 1) e.preventDefault();
+  });
   win.loadURL('scout://app/index.html');
 }
 
 app.whenReady().then(() => {
+  /* cámara y micrófono para «Cámara en vivo»: se conceden a la página y se pide el permiso de macOS */
+  try {
+    session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(['media', 'fullscreen', 'clipboard-sanitized-write', 'display-capture'].includes(perm)));
+    session.defaultSession.setPermissionCheckHandler((_wc, perm) => ['media', 'fullscreen', 'clipboard-sanitized-write'].includes(perm));
+  } catch (_) {}
+  ipcMain.handle('media:ask', async () => {
+    if (process.platform !== 'darwin') return { camera: 'granted', microphone: 'granted' };
+    const out = {};
+    for (const k of ['camera', 'microphone']) {
+      try { out[k] = systemPreferences.getMediaAccessStatus(k); if (out[k] !== 'granted' && out[k] !== 'denied') { await systemPreferences.askForMediaAccess(k); out[k] = systemPreferences.getMediaAccessStatus(k); } } catch (_) { out[k] = 'unknown'; }
+    }
+    return out;
+  });
   protocol.handle('scout', async (req) => {
     const u = new URL(req.url);
+    if (u.hostname === 'file') {
+      // vídeo ya abierto antes: se lee de su sitio en el disco (solo formatos de vídeo) para no pedirlo otra vez
+      try {
+        const fp = decodeURIComponent(u.pathname);
+        if (/\.(mp4|m4v|mov|webm|mkv|mts|m2ts|avi)$/i.test(fp) && fs.existsSync(fp)) return net.fetch(pathToFileURL(fp).toString());
+      } catch (_) {}
+      return new Response('', { status: 404 });
+    }
     const rel = decodeURIComponent(u.pathname).replace(/^\/+/, '') || 'index.html';
     if (rel === 'index.html') {
       // Siempre intenta bajar la última versión publicada; si no hay internet usa la última copia guardada o la incluida en la app
@@ -146,7 +187,23 @@ app.whenReady().then(() => {
       try { if (fs.existsSync(cache)) return new Response(fs.readFileSync(cache, 'utf8'), { headers: hdr }); } catch (_) {}
     }
     const file = path.join(__dirname, 'app', path.normalize(rel).replace(/^(\.\.[\/\\])+/, ''));
-    return net.fetch(pathToFileURL(file).toString());
+    if (fs.existsSync(file)) return net.fetch(pathToFileURL(file).toString());
+    // Archivos que no vienen en la app (p. ej. la carpeta ai/ de la IA): se bajan de la web publicada y se guardan en caché
+    try {
+      const safeRel = path.normalize(rel).replace(/^(\.\.[\/\\])+/, '');
+      const cacheFile = path.join(app.getPath('userData'), 'remote', safeRel);
+      if (fs.existsSync(cacheFile)) return net.fetch(pathToFileURL(cacheFile).toString());
+      const base = REMOTE.replace(/index\.html.*$/, '');
+      const r = await fetch(base + rel.split('/').map(encodeURIComponent).join('/'));
+      if (r.ok) {
+        const buf = Buffer.from(await r.arrayBuffer());
+        try { fs.mkdirSync(path.dirname(cacheFile), { recursive: true }); fs.writeFileSync(cacheFile, buf); } catch (_) {}
+        const ext = path.extname(rel).toLowerCase();
+        const types = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.wasm': 'application/wasm', '.onnx': 'application/octet-stream', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png' };
+        return new Response(buf, { headers: { 'content-type': types[ext] || 'application/octet-stream' } });
+      }
+    } catch (_) {}
+    return new Response('No encontrado', { status: 404 });
   });
   buildMenu();
   createWindow();
