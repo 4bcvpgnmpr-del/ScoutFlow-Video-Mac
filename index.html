@@ -5253,6 +5253,7 @@ function loadFile(file,fromLib){
   hasVideo=false;
   objectURL=file.scoutUrl||URL.createObjectURL(file);
   videoName=file.name; videoKey=file.name+'|'+file.size;
+  window.__freshNew=!fromLib&&!!window.__pjFresh&&(Date.now()-window.__pjFresh<180000); window.__pjFresh=0;
   window.__fresh=fromLib?null:videoKey;   /* elegir un archivo empieza de cero; solo «Mis partidos»/proyectos recuperan lo guardado */
   video.src=objectURL;
   $('#videoName').textContent=file.name;
@@ -5276,6 +5277,12 @@ video.addEventListener('loadedmetadata',()=>{
   let restored=0;
   try{
     /* un partido ya guardado se recupera con sus cortes al volver a elegir su vídeo (antes se borraban si no estaba en un grupo); para empezarlo de cero se borra desde Mis proyectos (🗑) */
+    if(window.__freshNew){ window.__freshNew=false; const raw0=lsGet('bbtag.project.'+videoKey);
+      if(raw0){ try{ const o0=JSON.parse(raw0); if(o0&&((o0.events&&o0.events.length)||(o0.markers&&o0.markers.length))){ lsSet('bbtag.project.'+videoKey+'.copia',raw0); } }catch(e){}
+        try{ localStorage.removeItem('bbtag.project.'+videoKey); localStorage.removeItem('bbtag.pts.'+videoKey); localStorage.removeItem('bbtag.psy.'+videoKey); }catch(e){}
+        setTimeout(()=>toast('Proyecto nuevo: este vídeo empieza de cero. Lo anterior queda guardado como copia.'),500); }
+      restored=applyProjectObj(null);
+    } else
     restored=applyProjectObj(JSON.parse(lsGet('bbtag.project.'+videoKey)||'null'));
   }catch(e){events=[];markers=[];stints=[];teles=[];playlists=[];covers=[];externals=[];matchMeta=null;}
   if(PART.pending){ const pd=PART.pending; PART.pending=null;
@@ -8923,7 +8930,7 @@ function ipSegSync(){ const g=document.getElementById('ipSeg'); if(!g) return; g
     askName('Nombre del proyecto','',n=>{
       const a=gGet(), g={id:uid(),name:n.slice(0,60),keys:[]}; a.push(g); gSet(a);
       try{ window.__renderRec&&window.__renderRec(); }catch(e){}
-      DLGDOC=null; pickSource(g);
+      DLGDOC=null; window.__pjFresh=Date.now(); pickSource(g);
     });
   }
   /* ventana para pedir un nombre (prompt() no existe en la app de escritorio) */
@@ -8968,10 +8975,19 @@ function ipSegSync(){ const g=document.getElementById('ipSeg'); if(!g) return; g
     c.querySelectorAll('[data-pg]').forEach(b=>b.onclick=()=>{
       const g=gGet().find(x=>x.id===b.dataset.pg); if(!g) return;
       lsSet(AK,g.id); S.gid=g.id; S.cat=S.game=S.side=''; S.sel=new Set(); S.view='lib'; DLGDOC=null;
-      const k=g.keys[g.keys.length-1];
-      if(!k){ const ph=document.getElementById('hmPhoto'); if(ph) ph.click(); return; }
+      const k0=g.keys[g.keys.length-1];
+      if(!k0){ const ph=document.getElementById('hmPhoto'); if(ph) ph.click(); return; }
+      const openK=k=>{
       if(k===videoKey&&hasVideo){ const x=document.getElementById('hmX'); if(x) x.click(); return; }
       try{ let r=null; try{ r=JSON.parse(lsGet('bbtag.recent')||'[]').find(x=>x.key===k); }catch(e){} toast('Abriendo «'+g.name+'»… (los vídeos grandes tardan unos segundos)'); if(r&&r.src&&window.__openSrc) window.__openSrc(r.src); else vidOpenLib(k); }catch(e){ toast('Abre el vídeo con «Abrir un vídeo»; se añadirá a «'+g.name+'».'); const ph=document.getElementById('hmPhoto'); if(ph) ph.click(); }
+      };
+      if(g.keys.length<2){ openK(k0); return; }
+      const T=titlesGet(), ov=document.createElement('div'); ov.style.cssText='position:fixed;inset:0;z-index:9500;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:14px';
+      ov.innerHTML='<div style="background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:16px;width:min(460px,100%);max-height:86vh;overflow:auto"><h3 style="margin:0 0 4px;font:700 20px var(--f-head)"></h3><p style="margin:0 0 10px;color:var(--muted);font-size:13px">Toca el partido que quieres abrir.</p><div id="pcL" style="display:flex;flex-direction:column;gap:8px"></div><div style="text-align:right;margin-top:10px"><button class="btn" id="pcNo">Cerrar</button></div></div>';
+      ov.querySelector('h3').textContent=g.name; const L=ov.querySelector('#pcL');
+      g.keys.slice().reverse().forEach((k,i)=>{ const o=q(k), n=((o&&o.events)||[]).length, t=(T[k]&&T[k].t)||(o&&o.meta&&o.meta.L&&o.meta.L.name?matchTitle(o.meta):'')||k.split('|')[0];
+        const b=document.createElement('button'); b.className=i===0?'btn primary':'btn'; b.style.cssText='text-align:left;padding:12px;font-size:15px'; b.textContent=(i===0?'▶ ':'')+t+' · '+n+' cortes'+(i===0?' (el último)':''); b.onclick=()=>{ ov.remove(); openK(k); }; L.appendChild(b); });
+      document.body.appendChild(ov); ov.querySelector('#pcNo').onclick=()=>ov.remove(); ov.addEventListener('click',e=>{ if(e.target===ov) ov.remove(); });
     });
     c.querySelector('#hmPgNew').onclick=newProject;
     c.querySelectorAll('[data-pdel]').forEach(b=>b.onclick=async e=>{
