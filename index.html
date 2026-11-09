@@ -435,6 +435,7 @@ body.ipad #dwBar{width:auto}
 .dstrip .pls-in{width:72px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:4px 8px;color:var(--text);font-size:13.5px}
 .hdr-per .seg button{padding:4px 10px;font-size:14px;border-bottom-width:3px}
 .dstrip .dh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:13px}
+.bb-done{background:var(--accent)!important;color:var(--on-accent,#111)!important;font-weight:800;padding:0 12px;min-height:30px;border-radius:8px;margin-left:6px;white-space:nowrap}
 .dstrip .dhint{margin:0 0 6px;font-size:12.5px;color:var(--muted)}
 .dstrip .dh b{font:700 15px var(--f-head);letter-spacing:.03em}
 .panel.short .dstrip{position:static}
@@ -4019,7 +4020,7 @@ function renderDescStrip(){
   const ev=events.find(e=>e.id===selectedId);
   const cur=ev?'<span>Clip: <b>'+esc(evName(ev))+'</b> · '+fmt(ev.t)+'</span>':'<span>Pulsa una categoría para crear un clip</span>';
   const gs=descForEv(ev);
-  let h='<div class="bb-sh bb-h"><b>Descriptores</b>'+cur+'<button class="bb-ib bb-add" id="bbAddDesc" title="Nuevo descriptor" aria-label="Nuevo descriptor">+</button></div>';
+  let h='<div class="bb-sh bb-h"><b>Descriptores</b>'+cur+'<button class="bb-ib bb-add" id="bbAddDesc" title="Nuevo descriptor" aria-label="Nuevo descriptor">+</button>'+(ev?'<button class="bb-ib bb-done" id="bbDone" title="Terminar el corte y seguir el vídeo">✓ Listo</button>':'')+'</div>';
   h+=gs.length?gs.map(g=>'<div class="dgrp2" style="--c:'+safeColor(g.color)+';--ink:'+inkOf(g.color)+'"><span class="dgl">'+esc(g.name)+'</span><div class="dflat">'+
       g.items.map(it=>{const on=!!ev&&ev.desc.some(o=>o.d===g.id&&o.i===it.id);
         return '<button class="dchip" data-dg="'+esc(g.id)+'" data-di="'+esc(it.id)+'" style="--c:'+safeColor(g.color)+';--ink:'+inkOf(g.color)+'" aria-pressed="'+on+'" title="'+esc(g.name+': '+it.label)+'">'+esc(it.label)+(it.key?'<kbd>'+esc(it.key.toUpperCase())+'</kbd>':'')+'</button>';}).join('')+'</div></div>').join('')
@@ -4037,6 +4038,7 @@ function renderDescStrip(){
 function bbItemClick(e,forceEdit){
   const edit=forceEdit||bbEditing;
   if(e.target.closest('#bbAddDesc')){openItem('desc',null);return true;}
+  if(e.target.closest('#bbDone')){ const ev0=events.find(x=>x.id===selectedId); toast('✓ Corte listo'+(ev0?' · '+evName(ev0):'')); document.body.classList.remove('lowOn'); autoResumeTag(); return true; }
   const ptab=e.target.closest('[data-pl-tab]'); if(ptab){bbPlTab={id:selectedId||null,k:ptab.dataset.plTab}; renderDescStrip(); return true;}
   const tb=e.target.closest('[data-team-edit]'); if(tb){openItem('team',tb.dataset.teamEdit);return true;}
   const pa=e.target.closest('[data-pl-add]'); if(pa){openItem('player',null,{team:pa.dataset.plAdd});return true;}
@@ -4765,7 +4767,8 @@ function openPlayerPicker(k,n){
   let ev=null;
   const head='<div class="pk-h"><span class="pk-ph" '+phStyle(p)+'>'+(p.photo?'':esc((p.name||'#'+p.n).trim()[0]||''))+'</span><span class="pk-t"><b>#'+esc(p.n)+' '+esc(p.name||'')+'</b><small>'+esc(teamName(k))+' · '+fmt(t0)+'</small></span><button class="pk-x" id="pkX" aria-label="Cerrar">✕</button></div>';
   const pkHide=()=>{ try{ return JSON.parse(lsGet('bbtag.pkHide')||'{}')||{}; }catch(_){ return {}; } };
-  const pkSetsOff=()=>{ try{ return JSON.parse(lsGet('bbtag.pkSetsOff')||'[]')||[]; }catch(_){ return []; } };
+  const pkKey='bbtag.pkSetsOff'+(typeof videoKey!=='undefined'&&videoKey?'|'+videoKey:'');
+  const pkSetsOff=()=>{ try{ return JSON.parse(lsGet(pkKey)||'[]')||[]; }catch(_){ return []; } };
   const pkAll=b=>cfg.descs.filter(g=>g.items.length&&descApplies(g,b.group,b.page||cfg.pages[0]));
   const chipRow=(label,items)=>'<div class="pk-v"><span>'+label+'</span>'+items.map(i=>'<button data-'+i.k+'="'+esc(i.id)+'" aria-pressed="'+i.on+'" style="--c:'+i.c+'">'+esc(i.t)+'</button>').join('')+'</div>';
   function stepCat(){
@@ -4774,7 +4777,7 @@ function openPlayerPicker(k,n){
     o.innerHTML='<div class="pk">'+head+(all.length>1?chipRow('Ver',all.map(x=>({k:'vs',id:x.s,t:x.s,on:!off.includes(x.s),c:'var(--accent)'}))):'')+
       (sets.length?sets.map(x=>(sets.length>1?'<div class="pk-s">'+esc(x.s)+'</div>':'<div class="pk-s">¿Qué ha hecho?</div>')+'<div class="pk-g">'+x.b.map(b=>'<button class="pk-c" data-b="'+esc(b.id)+'" style="--c:'+safeColor(b.color)+';--ink:'+inkOf(b.color)+'">'+esc(b.label)+'</button>').join('')+'</div>').join(''):(all.length?'<p class="hint">Activa arriba qué grupos quieres ver.</p>':'<p class="hint">No hay categorías. Crea alguna en 🎛 Botonera.</p>'))+'</div>';
     wire();
-    o.querySelectorAll('[data-vs]').forEach(x=>x.onclick=()=>{ const m=pkSetsOff(), n=x.dataset.vs, i=m.indexOf(n); if(i>=0) m.splice(i,1); else m.push(n); lsSet('bbtag.pkSetsOff',JSON.stringify(m)); stepCat(); });
+    o.querySelectorAll('[data-vs]').forEach(x=>x.onclick=()=>{ const m=pkSetsOff(), n=x.dataset.vs, i=m.indexOf(n); if(i>=0) m.splice(i,1); else m.push(n); lsSet(pkKey,JSON.stringify(m)); stepCat(); });
     o.querySelectorAll('[data-b]').forEach(x=>x.onclick=()=>{
       const b=btnById(x.dataset.b); if(!b) return;
       ev=tagFor(b,k,p.n,t0); flash(b.id);
@@ -5182,14 +5185,14 @@ requestAnimationFrame(loop);
 let lastFile=null;
 function loadFile(file,fromLib){
   if(!file) return;
-  try{ SFILES[file.name+'|'+file.size]=file; if(window.scoutDesktop) pathRemember(file); }catch(e){}
+  try{ if(!file.scoutUrl){ SFILES[file.name+'|'+file.size]=file; if(window.scoutDesktop) pathRemember(file); } }catch(e){}
   try{ extLinkAll(file); }catch(e){}
   if(file.type&&!file.type.startsWith('video/')&&!/\.(mp4|m4v|mov|webm|mkv|avi|mts|m2ts|3gp)$/i.test(file.name)){toast('Ese archivo no es un vídeo ('+file.type+').');return;}
   if(window.__extOff) window.__extOff();
-  if(objectURL) URL.revokeObjectURL(objectURL);
+  if(objectURL&&!/^scout:/.test(objectURL)) URL.revokeObjectURL(objectURL);
   stopClip(false);
   hasVideo=false;
-  objectURL=URL.createObjectURL(file);
+  objectURL=file.scoutUrl||URL.createObjectURL(file);
   videoName=file.name; videoKey=file.name+'|'+file.size;
   window.__fresh=fromLib?null:videoKey;   /* elegir un archivo empieza de cero; solo «Mis partidos»/proyectos recuperan lo guardado */
   video.src=objectURL;
@@ -5303,15 +5306,17 @@ async function vidFromHandle(key){
 }
 /* el archivo de un partido guardado: de «Mis partidos», de la ubicación recordada o, si no hay más remedio, se pide una vez */
 const SFILES={};   /* archivos grandes elegidos en esta sesión */
-async function vidFile(key){
+async function vidFile(key,lazy){
   if(SFILES[key]) return SFILES[key];
   try{ const v=await vdbTx('readonly',st=>st.get(key)); if(v&&v.blob) return new File([v.blob],v.name,{type:v.type||'video/mp4'}); }catch(e){}
   try{ const f=await vidFromHandle(key); if(f) return f; }catch(e){}
   /* app de Mac: si ese vídeo ya se abrió antes, se vuelve a leer de su sitio en el disco sin preguntar */
   if(window.scoutDesktop){ try{
     const o=JSON.parse(localStorage.getItem('bbtag.paths')||'{}'), fp=o[key]; const i=String(key).lastIndexOf('|'), name=i>=0?key.slice(0,i):String(key), size=i>=0?+key.slice(i+1):0;
-    if(fp){ const r=await fetch('scout://file/'+fp.split('/').map(encodeURIComponent).join('/')); if(r.ok){ const b=await r.blob(); if(!size||b.size===size){ const f=new File([b],name,{type:b.type||(/\.webm$/i.test(name)?'video/webm':'video/mp4')}); SFILES[key]=f; return f; } } }
-  }catch(e){} }
+    window.__vfWhy=fp?'':'esta app no recuerda dónde está el vídeo'; 
+    if(fp&&lazy&&size&&window.scoutDesktop.writeFile){ const url='scout://file/'+fp.split('/').map(encodeURIComponent).join('/'); const r0=await fetch(url,{headers:{Range:'bytes=0-1'}}); try{ r0.body&&r0.body.cancel(); }catch(_){} if(r0.ok){ return {name:name,size:size,type:/\.webm$/i.test(name)?'video/webm':'video/mp4',lastModified:Date.now(),scoutUrl:url,scoutPath:fp}; } window.__vfWhy='no encuentro el archivo en '+fp+' (¿lo moviste?)'; }
+    else if(fp){ const r=await fetch('scout://file/'+fp.split('/').map(encodeURIComponent).join('/')); if(!r.ok) window.__vfWhy='no encuentro el archivo en '+fp+' (¿lo moviste?)'; if(r.ok){ const b=await r.blob(); if(size&&b.size!==size) window.__vfWhy='el archivo cambió de tamaño'; if(!size||b.size===size){ const f=new File([b],name,{type:b.type||(/\.webm$/i.test(name)?'video/webm':'video/mp4')}); SFILES[key]=f; return f; } } }
+  }catch(e){ window.__vfWhy='error al leerlo: '+((e&&e.message)||e); } }
   return null;
 }
 function vidAsk(key,title,doc){
@@ -5361,10 +5366,10 @@ function vidRelink(key){
 }
 async function vidOpenLib(key){
   try{
-    const f=await vidFile(key);
-    if(!f){ vidRelink(key); return; }
+    const f=await vidFile(key,true);
+    if(!f){ if(window.scoutDesktop&&window.__vfWhy) toast('No se pudo abrir solo: '+window.__vfWhy); vidRelink(key); return; }
     expClose(); loadFile(f,true);
-  }catch(e){toast('No se pudo abrir: '+((e&&e.message)||e));}
+  }catch(e){toast('No se pudo abrir: '+((e&&e.message)||e)); try{ vidRelink(key); }catch(_){} }
 }
 let libTeamF='';
 async function openLib(){
@@ -6128,7 +6133,7 @@ document.getElementById('bQt').onclick=openQt;
 /* ===== EXPORTACIÓN RÁPIDA (WebCodecs + MP4) ===== */
 const FX={err:''};
 const fxSleep=ms=>new Promise(r=>setTimeout(r,ms));
-const fxOk=()=>!!(window.VideoDecoder&&window.VideoEncoder&&window.EncodedVideoChunk&&window.MP4Box&&window.Mp4Muxer&&lastFile);
+const fxOk=()=>!!(window.VideoDecoder&&window.VideoEncoder&&window.EncodedVideoChunk&&window.MP4Box&&window.Mp4Muxer&&lastFile&&!lastFile.scoutUrl);
 function fxDesc(mp,id){
   const e=mp.getTrackById(id).mdia.minf.stbl.stsd.entries[0];
   const box=e.avcC||e.hvcC; if(!box) return undefined;
@@ -6349,7 +6354,7 @@ async function fxRun(list,o,prog){
 /* copia sin recodificar: mismo códec y calidad que el original (corta en el fotograma clave anterior) */
 async function fxCopy(list,o,prog,srcFile){
   const file=srcFile||lastFile;
-  if(!(window.MP4Box&&window.Mp4Muxer&&file)) throw new Error('Sin soporte para copiar sin recodificar.');
+  if(!(window.MP4Box&&window.Mp4Muxer&&file&&!file.scoutUrl)) throw new Error('Sin soporte para copiar sin recodificar.');
   if(list.some(e=>e.cover||e.ext)) throw new Error('La lista lleva portadas o vídeos externos.');
   const {mp,info}=await fxOpen(file);
   const vt=info.videoTracks[0]; if(!vt) throw new Error('Sin pista de vídeo.');
@@ -8907,7 +8912,7 @@ function ipSegSync(){ const g=document.getElementById('ipSeg'); if(!g) return; g
       const k=g.keys[g.keys.length-1];
       if(!k){ const ph=document.getElementById('hmPhoto'); if(ph) ph.click(); return; }
       if(k===videoKey&&hasVideo){ const x=document.getElementById('hmX'); if(x) x.click(); return; }
-      try{ let r=null; try{ r=JSON.parse(lsGet('bbtag.recent')||'[]').find(x=>x.key===k); }catch(e){} if(r&&r.src&&window.__openSrc) window.__openSrc(r.src); else vidOpenLib(k); }catch(e){ toast('Abre el vídeo con «Abrir un vídeo»; se añadirá a «'+g.name+'».'); const ph=document.getElementById('hmPhoto'); if(ph) ph.click(); }
+      try{ let r=null; try{ r=JSON.parse(lsGet('bbtag.recent')||'[]').find(x=>x.key===k); }catch(e){} toast('Abriendo «'+g.name+'»… (los vídeos grandes tardan unos segundos)'); if(r&&r.src&&window.__openSrc) window.__openSrc(r.src); else vidOpenLib(k); }catch(e){ toast('Abre el vídeo con «Abrir un vídeo»; se añadirá a «'+g.name+'».'); const ph=document.getElementById('hmPhoto'); if(ph) ph.click(); }
     });
     c.querySelector('#hmPgNew').onclick=newProject;
     c.querySelectorAll('[data-pdel]').forEach(b=>b.onclick=async e=>{
@@ -9642,7 +9647,7 @@ document.getElementById('ipLibMore').onclick=()=>document.body.classList.toggle(
   }
   function thumb(file){
     try{
-      const v=document.createElement('video'), u=URL.createObjectURL(file); v.muted=true; v.playsInline=true; v.preload='auto'; v.src=u;
+      const v=document.createElement('video'), u=file.scoutUrl||URL.createObjectURL(file); v.muted=true; v.playsInline=true; v.preload='auto'; v.src=u;
       const done=()=>{ try{URL.revokeObjectURL(u);}catch(e){} };
       v.onloadedmetadata=()=>{ try{ v.currentTime=Math.min(3,(v.duration||6)*0.15); }catch(e){} };
       v.onseeked=()=>{ try{ const c=document.createElement('canvas'); c.width=320; c.height=Math.round(320*(v.videoHeight||9)/(v.videoWidth||16)); c.getContext('2d').drawImage(v,0,0,c.width,c.height);
