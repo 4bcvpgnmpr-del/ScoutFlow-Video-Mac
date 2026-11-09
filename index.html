@@ -3988,14 +3988,27 @@ function playerOpts(ev){
 const descGroup=id=>cfg.descs.find(g=>g.id===id);
 function descLabel(o){const g=descGroup(o.d), it=g&&g.items.find(x=>x.id===o.i);return {g:g?g.name:o.g,l:it?it.label:o.l,color:g?g.color:'#8CA0B3'};}
 const descText=ev=>ev.desc.map(o=>descLabel(o).l).filter(Boolean).join(' · ');
-const descApplies=(g,cat,page)=>!g.scope.length||g.scope.includes(cat)||(!!page&&g.scope.includes('set:'+page));
+const descApplies=(g,cat,page,bid)=>!g.scope.length||g.scope.includes(cat)||(!!page&&g.scope.includes('set:'+page))||(!!bid&&g.scope.includes('b:'+bid));
 const evPage=ev=>{ const b=btnById(ev&&ev.btnId); return b?(b.page||cfg.pages[0]):''; };
-const descForSet=g=>{ const set=(typeof IPS!=='undefined'&&IPS)?IPS.set:'*'; if(!set||set==='*'||!g.scope.length) return true; if(g.scope.includes('set:'+set)) return true; const cats=cfg.buttons.filter(b=>(b.page||cfg.pages[0])===set).map(b=>b.group); return cats.some(c=>g.scope.includes(c)); };
-const descForEv=ev=>cfg.descs.filter(g=>g.items.length&&(ev?descApplies(g,info(ev).group,evPage(ev)):descForSet(g)));
+const descForSet=g=>{ const set=(typeof IPS!=='undefined'&&IPS)?IPS.set:'*'; if(!set||set==='*'||!g.scope.length) return true; if(g.scope.includes('set:'+set)) return true; const bs=cfg.buttons.filter(b=>(b.page||cfg.pages[0])===set); return bs.some(b=>g.scope.includes(b.group)||g.scope.includes('b:'+b.id)); };
+const descForEv=ev=>cfg.descs.filter(g=>g.items.length&&(ev?descApplies(g,info(ev).group,evPage(ev),ev.btnId):descForSet(g)));
 const scopeOpts=()=>[['','Todas'] ].concat((cfg.pages||[]).filter(x=>!isPlSet(x)).map(x=>['set:'+x,'Botonera: '+x])).concat((cfg.cats||[]).map(c=>['c:'+c,c]));
 const scopeOn=(g,k)=>k===''?!g.scope.length:(k.indexOf('c:')===0?g.scope.includes(k.slice(2)):g.scope.includes(k));
 function scopeToggle(g,k){ if(k===''){ g.scope=[]; return; } const v=k.indexOf('c:')===0?k.slice(2):k; const i=g.scope.indexOf(v); if(i>=0) g.scope.splice(i,1); else g.scope.push(v); }
-const scopeHTML=(g,cls)=>'<div class="'+(cls||'')+'" data-scope style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0"><span style="font-size:12.5px;color:var(--muted)">Aparece en:</span>'+scopeOpts().map(o=>'<button type="button" class="mini" data-sc="'+esc(o[0])+'" aria-pressed="'+scopeOn(g,o[0])+'" style="'+(scopeOn(g,o[0])?'background:var(--accent);color:#fff;border-color:var(--accent)':'')+'">'+esc(o[1])+'</button>').join('')+'</div>';
+const scopeHTML=(g,cls)=>{
+  const on=k=>scopeOn(g,k), st=k=>on(k)?'background:var(--accent);color:var(--on-accent,#111);border-color:var(--accent);font-weight:800':'';
+  const chip=(k,t,x)=>'<button type="button" class="mini" data-sc="'+esc(k)+'" aria-pressed="'+on(k)+'" style="min-height:36px;padding:4px 12px;'+st(k)+(x||'')+'">'+(on(k)?'✓ ':'')+esc(t)+'</button>';
+  let h='<div class="'+(cls||'')+'" data-scope style="margin:6px 0"><div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">Toca dónde quieres que salga este grupo. Si no marcas nada, sale en todas.</div>'+
+    '<div style="margin-bottom:10px">'+chip('','Todas las botoneras y categorías')+'</div>';
+  (cfg.pages||[]).filter(x=>!isPlSet(x)).forEach(p=>{
+    const bs=cfg.buttons.filter(b=>(b.page||cfg.pages[0])===p&&b.id!=='jug_base');
+    h+='<div style="border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin-bottom:8px"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px"><b style="font-size:13px">'+esc(p)+'</b>'+chip('set:'+p,'Todo este conjunto')+'</div>'+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+(bs.length?bs.map(b=>chip('b:'+b.id,b.label)).join(''):'<span style="font-size:12.5px;color:var(--muted)">Sin categorías</span>')+'</div></div>';
+  });
+  const old=(g.scope||[]).filter(v=>v.indexOf('set:')!==0&&v.indexOf('b:')!==0);
+  if(old.length) h+='<div style="font-size:12.5px;color:var(--muted);margin-top:4px">Marcas antiguas (grupos viejos; toca para quitarlas): '+old.map(v=>'<button type="button" class="mini" data-sc="c:'+esc(v)+'" aria-pressed="true" style="min-height:32px;padding:2px 10px;background:var(--accent);color:var(--on-accent,#111)">✕ '+esc(v)+'</button>').join(' ')+'</div>';
+  return h+'</div>';
+};
 function descByKey(k){for(const g of cfg.descs){const it=g.items.find(x=>x.key&&x.key===k); if(it) return {g,it};}return null;}
 function keyOwner(k,exceptId){
   const b=cfg.buttons.find(x=>x.key===k&&x.id!==exceptId); if(b) return '«'+b.label+'»';
@@ -4649,7 +4662,7 @@ window.__pauseTag=PAUSETAG;
 function autoPauseTag(b){
   try{
     if(PAUSETAG.get()!=='desc'||!video||video.paused||video.ended) return;
-    const has=(cfg.descs||[]).some(g=>g&&g.items&&g.items.length&&descApplies(g,b.group,b.page||cfg.pages[0]));
+    const has=(cfg.descs||[]).some(g=>g&&g.items&&g.items.length&&descApplies(g,b.group,b.page||cfg.pages[0],b.id));
     if(!has) return;
     video.pause(); PAUSETAG.by=true;
   }catch(e){}
@@ -4791,7 +4804,7 @@ function openPlayerPicker(k,n){
   const pkHide=()=>{ try{ return JSON.parse(lsGet('bbtag.pkHide')||'{}')||{}; }catch(_){ return {}; } };
   const pkKey='bbtag.pkSetsOff'+(typeof videoKey!=='undefined'&&videoKey?'|'+videoKey:'');
   const pkSetsOff=()=>{ try{ return JSON.parse(lsGet(pkKey)||'[]')||[]; }catch(_){ return []; } };
-  const pkAll=b=>cfg.descs.filter(g=>g.items.length&&descApplies(g,b.group,b.page||cfg.pages[0]));
+  const pkAll=b=>cfg.descs.filter(g=>g.items.length&&descApplies(g,b.group,b.page||cfg.pages[0],b.id));
   const chipRow=(label,items)=>'<div class="pk-v"><span>'+label+'</span>'+items.map(i=>'<button data-'+i.k+'="'+esc(i.id)+'" aria-pressed="'+i.on+'" style="--c:'+i.c+'">'+esc(i.t)+'</button>').join('')+'</div>';
   const pkMode=()=>{ const m=lsGet('bbtag.pkMode'); return m==='dsc'?'dsc':'cat'; };
   const pkGKey=projKey('bbtag.pkGOff');
@@ -13098,7 +13111,7 @@ function onKey(e){
     e.preventDefault();
     const ev=events.find(x=>x.id===selectedId);
     if(!ev){toast('Primero etiqueta una acción para poder calificarla.');return;}
-    if(!descApplies(dsc.g,info(ev).group,evPage(ev))){toast('«'+dsc.it.label+'» no se ofrece en el grupo «'+info(ev).group+'».');return;}
+    if(!descApplies(dsc.g,info(ev).group,evPage(ev),ev.btnId)){toast('«'+dsc.it.label+'» no se ofrece en el grupo «'+info(ev).group+'».');return;}
     toggleDesc(ev,dsc.g.id,dsc.it.id);
   }
 }
