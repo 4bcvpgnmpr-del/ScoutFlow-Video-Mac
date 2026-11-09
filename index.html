@@ -435,7 +435,10 @@ body.ipad #dwBar{width:auto}
 .dstrip .pls-in{width:72px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:4px 8px;color:var(--text);font-size:13.5px}
 .hdr-per .seg button{padding:4px 10px;font-size:14px;border-bottom-width:3px}
 .dstrip .dh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:13px}
-.bb-done{background:var(--accent)!important;color:var(--on-accent,#111)!important;font-weight:800;padding:0 12px;min-height:30px;border-radius:8px;margin-left:6px;white-space:nowrap}
+.bbdone-row{display:none}
+body.lowOn .bbdone-row,body.vfull .bbdone-row{display:block;margin:0 0 6px}
+body.ipad.vfull.vfStrip.lowOn #pTags .bb-low .bbdone-row{display:block!important;flex:none;position:sticky;left:0;z-index:2}
+.bb-done{background:var(--accent)!important;color:var(--on-accent,#111)!important;font-weight:800;padding:0 14px;min-height:40px;border-radius:10px;border:0;white-space:nowrap;font-size:15px}
 .dstrip .dhint{margin:0 0 6px;font-size:12.5px;color:var(--muted)}
 .dstrip .dh b{font:700 15px var(--f-head);letter-spacing:.03em}
 .panel.short .dstrip{position:static}
@@ -4020,7 +4023,8 @@ function renderDescStrip(){
   const ev=events.find(e=>e.id===selectedId);
   const cur=ev?'<span>Clip: <b>'+esc(evName(ev))+'</b> · '+fmt(ev.t)+'</span>':'<span>Pulsa una categoría para crear un clip</span>';
   const gs=descForEv(ev);
-  let h='<div class="bb-sh bb-h"><b>Descriptores</b>'+cur+'<button class="bb-ib bb-add" id="bbAddDesc" title="Nuevo descriptor" aria-label="Nuevo descriptor">+</button>'+(ev?'<button class="bb-ib bb-done" id="bbDone" title="Terminar el corte y seguir el vídeo">✓ Listo</button>':'')+'</div>';
+  let h='<div class="bb-sh bb-h"><b>Descriptores</b>'+cur+'<button class="bb-ib bb-add" id="bbAddDesc" title="Nuevo descriptor" aria-label="Nuevo descriptor">+</button>'+'</div>';
+  if(ev) h='<div class="bbdone-row"><button class="bb-done" id="bbDone" title="Terminar el corte y seguir el vídeo">✓ Listo · seguir</button></div>'+h;
   h+=gs.length?gs.map(g=>'<div class="dgrp2" style="--c:'+safeColor(g.color)+';--ink:'+inkOf(g.color)+'"><span class="dgl">'+esc(g.name)+'</span><div class="dflat">'+
       g.items.map(it=>{const on=!!ev&&ev.desc.some(o=>o.d===g.id&&o.i===it.id);
         return '<button class="dchip" data-dg="'+esc(g.id)+'" data-di="'+esc(it.id)+'" style="--c:'+safeColor(g.color)+';--ink:'+inkOf(g.color)+'" aria-pressed="'+on+'" title="'+esc(g.name+': '+it.label)+'">'+esc(it.label)+(it.key?'<kbd>'+esc(it.key.toUpperCase())+'</kbd>':'')+'</button>';}).join('')+'</div></div>').join('')
@@ -4232,13 +4236,31 @@ function inkOf(c){
   const n=parseInt(m[1],16), r=(n>>16)&255, g=(n>>8)&255, b=n&255;
   return (0.299*r+0.587*g+0.114*b)/255>0.62?'#14202B':'#fff';
 }
+const projKey=n=>n+(typeof videoKey!=='undefined'&&videoKey?'|'+videoKey:'');
+function setsOff(){ try{ return JSON.parse(lsGet(projKey('bbtag.setsHid'))||'[]')||[]; }catch(_){ return []; } }
+function visSets(){ const off=setsOff(), ps=(cfg.pages||[]).filter(x=>!off.includes(x)||(typeof IPS!=='undefined'&&IPS&&IPS.set===x)); return ps.length?ps:(cfg.pages||[]); }
+function openSetsVis(){
+  const old=document.getElementById('setsVis'); if(old) old.remove();
+  const o=document.createElement('div'); o.id='setsVis'; o.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center';
+  const off=setsOff();
+  o.innerHTML='<div style="background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:16px;min-width:260px;max-width:90vw"><b style="font-size:16px">Conjuntos de este proyecto</b><p style="margin:6px 0 10px;font-size:13px;color:var(--muted)">Marca los que quieres ver. Se guarda solo para este proyecto.</p>'+
+    cfg.pages.map(x=>'<label style="display:flex;gap:10px;align-items:center;padding:8px 0;font-size:16px"><input type="checkbox" data-sv="'+esc(x)+'" '+(off.includes(x)?'':'checked')+' style="width:20px;height:20px"> '+(isPlSet(x)?'👤 ':'')+esc(x)+'</label>').join('')+
+    '<div style="text-align:right;margin-top:10px"><button class="bb-done" id="svOk">Aceptar</button></div></div>';
+  document.body.appendChild(o);
+  o.onclick=e=>{ if(e.target===o) o.remove(); };
+  o.querySelector('#svOk').onclick=()=>{ const m=[]; o.querySelectorAll('[data-sv]').forEach(c=>{ if(!c.checked) m.push(c.dataset.sv); });
+    if(m.length>=cfg.pages.length) m.pop();
+    lsSet(projKey('bbtag.setsHid'),JSON.stringify(m)); o.remove();
+    if(typeof IPS!=='undefined'&&IPS&&IPS.set!=='*'&&m.includes(IPS.set)){ const v=cfg.pages.find(x=>!m.includes(x)); if(v){ IPS.set=v; lsSet('bbtag.ipset',v); } }
+    renderCodes(); };
+}
 function renderSetQuick(){
   let q=document.getElementById('setQuick');
   if(!q){ q=document.createElement('div'); q.id='setQuick'; codes.parentNode.insertBefore(q,codes);
-    q.addEventListener('click',e=>{ const b=e.target.closest('[data-qs]'); if(!b) return; setQuickGo(b.dataset.qs); }); }
-  const ps=cfg.pages||[]; if(ps.length<2||typeof IPS==='undefined'||!IPS){ q.style.display='none'; return; }
+    q.addEventListener('click',e=>{ if(e.target.closest('[data-qvis]')){ openSetsVis(); return; } const b=e.target.closest('[data-qs]'); if(!b) return; setQuickGo(b.dataset.qs); }); }
+  const ps=visSets(); if((cfg.pages||[]).length<2||typeof IPS==='undefined'||!IPS){ q.style.display='none'; return; }
   q.style.display='';
-  q.innerHTML=ps.map(x=>'<button type="button" data-qs="'+esc(x)+'" class="'+(IPS.set===x?'on':'')+'">'+(isPlSet(x)?'👤 ':'')+esc(x)+'</button>').join('');
+  q.innerHTML=ps.map(x=>'<button type="button" data-qs="'+esc(x)+'" class="'+(IPS.set===x?'on':'')+'">'+(isPlSet(x)?'👤 ':'')+esc(x)+'</button>').join('')+'<button type="button" data-qvis="1" title="Elegir qué conjuntos ver en este proyecto">👁</button>';
 }
 function setQuickGo(name){
   if(typeof IPS==='undefined'||!IPS||!cfg.pages.includes(name)) return;
@@ -4246,7 +4268,7 @@ function setQuickGo(name){
   try{ renderCodes(); }catch(e){ toast('Error al cambiar de botonera: '+(e&&e.message||e)); }
 }
 function setQuickNext(){
-  const ps=cfg.pages||[]; if(ps.length<2||typeof IPS==='undefined'||!IPS) return;
+  const ps=visSets(); if(ps.length<2||typeof IPS==='undefined'||!IPS) return;
   const i=ps.indexOf(IPS.set); setQuickGo(ps[(i+1)%ps.length]);
 }
 const SETKEY={get:()=>{ const v=lsGet('bbtag.setkey'); return v==null?'`':v; },set:v=>lsSet('bbtag.setkey',v)};
@@ -4257,11 +4279,11 @@ document.addEventListener('keydown',e=>{
   if(!hit) return;
   const t=e.target; if(t&&(/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)||t.isContentEditable)) return;
   e.preventDefault(); e.stopImmediatePropagation();
-  const ps=cfg.pages||[]; if(e.shiftKey&&ps.length>1&&typeof IPS!=='undefined'&&IPS){ const i=ps.indexOf(IPS.set); setQuickGo(ps[(i-1+ps.length)%ps.length]); } else setQuickNext();
+  const ps=visSets(); if(e.shiftKey&&ps.length>1&&typeof IPS!=='undefined'&&IPS){ const i=ps.indexOf(IPS.set); setQuickGo(ps[(i-1+ps.length)%ps.length]); } else setQuickNext();
 },true);
 function renderCodes(){
   const ipSelEl=document.getElementById('ipSetSel');
-  if(ipSelEl&&typeof IPS!=='undefined'){ ipSelEl.innerHTML='<option value="*">Todos</option>'+cfg.pages.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join(''); if(IPS.set!=='*'&&!cfg.pages.includes(IPS.set)) IPS.set='*'; ipSelEl.value=IPS.set; }
+  if(ipSelEl&&typeof IPS!=='undefined'){ ipSelEl.innerHTML='<option value="*">Todos</option>'+visSets().map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join(''); if(IPS.set!=='*'&&!cfg.pages.includes(IPS.set)) IPS.set='*'; ipSelEl.value=IPS.set; }
   const items=cfg.buttons.filter(b=>!b.hidden&&(typeof IPS==='undefined'||!IPS||IPS.set==='*'||(b.page||cfg.pages[0])===IPS.set));
   const btnHtml=b=>'<button class="code '+(b.size||'m')+'" data-id="'+esc(b.id)+'" style="--c:'+safeColor(b.color)+';--ink:'+inkOf(b.color)+'" title="'+esc(b.label)+(b.key?' (tecla '+esc(b.key.toUpperCase())+')':'')+'"><span class="cl">'+(b.icon?'<span class="ci" aria-hidden="true">'+esc(b.icon)+'</span>':'')+esc(b.label)+'<b class="x"></b></span><span class="cm">'+(b.key?'<kbd>'+esc(b.key.toUpperCase())+'</kbd>':'')+'</span></button>';
   try{ renderSetQuick(); }catch(e){}
@@ -4771,12 +4793,35 @@ function openPlayerPicker(k,n){
   const pkSetsOff=()=>{ try{ return JSON.parse(lsGet(pkKey)||'[]')||[]; }catch(_){ return []; } };
   const pkAll=b=>cfg.descs.filter(g=>g.items.length&&descApplies(g,b.group,b.page||cfg.pages[0]));
   const chipRow=(label,items)=>'<div class="pk-v"><span>'+label+'</span>'+items.map(i=>'<button data-'+i.k+'="'+esc(i.id)+'" aria-pressed="'+i.on+'" style="--c:'+i.c+'">'+esc(i.t)+'</button>').join('')+'</div>';
+  const pkMode=()=>{ const m=lsGet('bbtag.pkMode'); return m==='dsc'?'dsc':'cat'; };
+  const pkGKey=projKey('bbtag.pkGOff');
+  const pkGOff=()=>{ try{ return JSON.parse(lsGet(pkGKey)||'[]')||[]; }catch(_){ return []; } };
+  const modeRow=()=>chipRow('Guiar por',[{k:'pm',id:'dsc',t:'Descriptores',on:pkMode()==='dsc',c:'var(--accent)'},{k:'pm',id:'cat',t:'Categorías',on:pkMode()==='cat',c:'var(--accent)'}]);
+  const wireMode=()=>o.querySelectorAll('[data-pm]').forEach(x=>x.onclick=()=>{ lsSet('bbtag.pkMode',x.dataset.pm); ev=null; stepCat(); });
+  function jugBase(){ let b=cfg.buttons.find(x=>x.id==='jug_base'); if(!b){ b={id:'jug_base',label:'Jugadora',group:'Jugadora',sub:'',page:cfg.pages.find(s=>!isPlSet(s))||cfg.pages[0],key:'',pre:5,post:3,pts:0,color:'#7F8C8D',icon:'',size:'m',hidden:true}; cfg.buttons.push(b); saveCfg(); } return b; }
+  function stepDsc(){
+    const gsAll=cfg.descs.filter(g=>g.items.length), off=pkGOff(), gs=gsAll.filter(g=>!off.includes(g.id));
+    o.innerHTML='<div class="pk">'+head+modeRow()+(gsAll.length>1?chipRow('Ver',gsAll.map(g=>({k:'vg',id:g.id,t:g.name,on:!off.includes(g.id),c:safeColor(g.color)}))):'')+
+      (gs.length?gs.map(g=>'<div class="pk-s" style="margin-top:8px">'+esc(g.name)+(g.multi?' · varios':'')+'</div><div class="pk-d" style="--c:'+safeColor(g.color)+';--ink:'+inkOf(g.color)+'">'+g.items.map(it=>{ const on=!!ev&&ev.desc.some(q=>q.d===g.id&&q.i===it.id); return '<button data-dg="'+esc(g.id)+'" data-di="'+esc(it.id)+'" aria-pressed="'+on+'">'+esc(it.label)+'</button>'; }).join('')+'</div>').join(''):'<p style="color:var(--muted);font-size:13px">No hay descriptores visibles. Elige arriba o crea uno con «+» en Descriptores.</p>')+
+      '<div class="pk-f"><button id="pkMore">＋ Otro corte</button><button class="pri" id="pkOk">✓ Listo</button></div></div>';
+    wire(); wireMode();
+    o.querySelectorAll('[data-vg]').forEach(x=>x.onclick=()=>{ const m=pkGOff(), n=x.dataset.vg, i=m.indexOf(n); if(i>=0) m.splice(i,1); else m.push(n); lsSet(pkGKey,JSON.stringify(m)); stepDsc(); });
+    o.querySelectorAll('[data-dg]').forEach(x=>x.onclick=()=>{
+      if(!ev){ ev=tagFor(jugBase(),k,p.n,t0); flash('jug_base'); }
+      toggleDesc(ev,x.dataset.dg,x.dataset.di);
+      ev.name=ev.desc.map(q=>q.l).join(' · ')||''; commit();
+      o.querySelectorAll('[data-dg]').forEach(y=>y.setAttribute('aria-pressed',ev.desc.some(q=>q.d===y.dataset.dg&&q.i===y.dataset.di)));
+    });
+    o.querySelector('#pkMore').onclick=()=>{ ev=null; stepDsc(); };
+    o.querySelector('#pkOk').onclick=()=>{ toast('✓ '+(ev&&ev.name?ev.name:'Corte')+' · '+(p.name||'#'+p.n)); closePlayerPicker(); };
+  }
   function stepCat(){
+    if(pkMode()==='dsc'&&cfg.descs.some(g=>g.items.length)) return stepDsc();
     const all=cfg.pages.filter(s=>!isPlSet(s)).map(s=>({s,b:cfg.buttons.filter(b=>!b.hidden&&(b.page||cfg.pages[0])===s)})).filter(x=>x.b.length);
     const off=pkSetsOff(), sets=all.filter(x=>!off.includes(x.s));
-    o.innerHTML='<div class="pk">'+head+(all.length>1?chipRow('Ver',all.map(x=>({k:'vs',id:x.s,t:x.s,on:!off.includes(x.s),c:'var(--accent)'}))):'')+
+    o.innerHTML='<div class="pk">'+head+(cfg.descs.some(g=>g.items.length)?modeRow():'')+(all.length>1?chipRow('Ver',all.map(x=>({k:'vs',id:x.s,t:x.s,on:!off.includes(x.s),c:'var(--accent)'}))):'')+
       (sets.length?sets.map(x=>(sets.length>1?'<div class="pk-s">'+esc(x.s)+'</div>':'<div class="pk-s">¿Qué ha hecho?</div>')+'<div class="pk-g">'+x.b.map(b=>'<button class="pk-c" data-b="'+esc(b.id)+'" style="--c:'+safeColor(b.color)+';--ink:'+inkOf(b.color)+'">'+esc(b.label)+'</button>').join('')+'</div>').join(''):(all.length?'<p class="hint">Activa arriba qué grupos quieres ver.</p>':'<p class="hint">No hay categorías. Crea alguna en 🎛 Botonera.</p>'))+'</div>';
-    wire();
+    wire(); wireMode();
     o.querySelectorAll('[data-vs]').forEach(x=>x.onclick=()=>{ const m=pkSetsOff(), n=x.dataset.vs, i=m.indexOf(n); if(i>=0) m.splice(i,1); else m.push(n); lsSet(pkKey,JSON.stringify(m)); stepCat(); });
     o.querySelectorAll('[data-b]').forEach(x=>x.onclick=()=>{
       const b=btnById(x.dataset.b); if(!b) return;
