@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
+const { Readable } = require('stream');
 let nativeAI; try{ nativeAI = require('./ai.js'); }catch(e){ nativeAI = { init: async()=>false, detect: async()=>[] }; }
 
 protocol.registerSchemesAsPrivileged([
@@ -164,7 +165,19 @@ app.whenReady().then(() => {
       // vídeo ya abierto antes: se lee de su sitio en el disco (solo formatos de vídeo) para no pedirlo otra vez
       try {
         const fp = decodeURIComponent(u.pathname);
-        if (/\.(mp4|m4v|mov|webm|mkv|mts|m2ts|avi)$/i.test(fp) && fs.existsSync(fp)) return net.fetch(pathToFileURL(fp).toString());
+        if (/\.(mp4|m4v|mov|webm|mkv|mts|m2ts|avi)$/i.test(fp) && fs.existsSync(fp)) {
+          // lectura por trozos (Range) a mano: así el vídeo empieza enseguida aunque pese varios GB
+          const st = fs.statSync(fp), size = st.size;
+          const ext = fp.split('.').pop().toLowerCase();
+          const type = ext === 'webm' ? 'video/webm' : (ext === 'mp4' || ext === 'm4v') ? 'video/mp4' : ext === 'mov' ? 'video/quicktime' : 'application/octet-stream';
+          const rg = /bytes=(\d*)-(\d*)/.exec(req.headers.get('range') || '');
+          let s = 0, e = size - 1, status = 200;
+          if (rg && (rg[1] || rg[2])) { status = 206; if (rg[1]) { s = parseInt(rg[1], 10); if (rg[2]) e = parseInt(rg[2], 10); } else { s = Math.max(0, size - parseInt(rg[2], 10)); } if (e > size - 1) e = size - 1; }
+          if (s > e || s >= size) return new Response('', { status: 416, headers: { 'Content-Range': 'bytes */' + size } });
+          const h = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': String(e - s + 1) };
+          if (status === 206) h['Content-Range'] = 'bytes ' + s + '-' + e + '/' + size;
+          return new Response(Readable.toWeb(fs.createReadStream(fp, { start: s, end: e })), { status, headers: h });
+        }
       } catch (_) {}
       return new Response('', { status: 404 });
     }
