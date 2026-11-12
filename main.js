@@ -142,6 +142,25 @@ function createWindow() {
       title: 'Grabación en curso', message: 'Estás grabando un partido en vivo.', detail: 'Si sales ahora, lo grabado hasta aquí se podrá recuperar al abrir el programa.' });
     if (r === 1) e.preventDefault();
   });
+  /* al cerrar con un proyecto abierto: preguntar si se guarda (siempre se guarda solo; así queda confirmado) */
+  let saliendo = false, libre = false;
+  win.on('close', async (e) => {
+    if (saliendo || libre) return;
+    e.preventDefault();
+    saliendo = true;
+    try {
+      const est = await win.webContents.executeJavaScript('window.__estadoSalir ? window.__estadoSalir() : null', true);
+      if (est && est.live) { saliendo = false; libre = true; win.close(); return; }
+      if (est && est.abierto) {
+        const r = dialog.showMessageBoxSync(win, { type: 'question', buttons: ['Guardar y salir', 'Salir sin guardar los últimos cambios', 'Cancelar'], defaultId: 0, cancelId: 2,
+          title: 'Cerrar ScoutFlow Video', message: '¿Guardar el proyecto «' + (est.nombre || 'sin nombre') + '»?',
+          detail: 'Tus cortes se guardan solos mientras trabajas. «Guardar y salir» los guarda otra vez antes de cerrar.' });
+        if (r === 2) { saliendo = false; return; }
+        if (r === 0) { try { await win.webContents.executeJavaScript('window.__guardarAlSalir && window.__guardarAlSalir()', true); } catch (_) {} }
+      }
+    } catch (_) {}
+    win.destroy();
+  });
   win.loadURL('scout://app/index.html');
 }
 
